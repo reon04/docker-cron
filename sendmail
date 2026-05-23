@@ -1,0 +1,42 @@
+#!/bin/bash
+set -eu
+
+# get mail content from stdin
+MAIL="$(cat)"
+
+# split mail into header and body part at first empty line
+HEADER_PART=""
+BODY_PART=""
+FOUND_SEPARATOR=0
+while IFS= read -r line || [ -n "$line" ]; do
+  if [ "$FOUND_SEPARATOR" -eq 0 ] && [ -z "$line" ]; then
+    HEADER_PART+=$'\n'
+    FOUND_SEPARATOR=1
+    continue
+  fi
+  if [ "$FOUND_SEPARATOR" -eq 0 ]; then
+    HEADER_PART+="$line"$'\n'
+  else
+    BODY_PART+="$line"$'\n'
+  fi
+done <<< "$MAIL"
+
+# check if header part is present and only contains headers, set header and body part accordingly
+REMAINDER="$(printf "%s" "$HEADER_PART" | sed -E 's/^[^:]+: .*$//')"
+if [ -n "$REMAINDER" ]; then
+  BODY_PART="$HEADER_PART$BODY_PART"
+  HEADER_PART=""
+fi
+
+# parse subject and body
+SUBJECT="$(printf "%s" "$HEADER_PART" | grep -i '^subject:' | sed 's/^subject:[[:space:]]*//I')"
+BODY="$(printf "%s" "$BODY_PART")"
+
+# assemble and send message
+MAX_LEN=2000
+TMPFILE="$(mktemp /tmp/message-XXXXXX.txt)"
+printf "%s\n" "${BODY:-=== no content ===}" > "$TMPFILE"
+curl -fsS -o /dev/null -F "payload_json=$(jq -Rn --arg content "$(printf "%s" "# ${SUBJECT:-*no subject*}" | head -c $MAX_LEN)" '{content: $content}')" -F "file=@${TMPFILE}" "$WEBHOOK_URL"
+rm -f "$TMPFILE"
+
+exit 0
