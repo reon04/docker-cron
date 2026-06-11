@@ -1,4 +1,4 @@
-FROM alpine:3.23
+FROM alpine:3.24
 
 RUN apk add --no-cache coreutils bash jq curl docker-cli
 COPY --chmod=744 sendmail /usr/bin/sendmail
